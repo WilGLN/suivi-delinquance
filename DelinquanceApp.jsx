@@ -4,6 +4,7 @@ import {
   PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
+import { parsePdfInBrowser } from "./pdfClientParser.js";
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN SYSTEM — Inspiré des standards data / criminologie
@@ -124,10 +125,8 @@ function SourceFooter({ commune, moisLabel, annee, fichierSource }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// VUE IMPORT
+// VUE IMPORT — parsing PDF côté client (fonctionne sur Netlify sans backend)
 // ─────────────────────────────────────────────────────────────
-const API_PARSE_PDF = "/api/parse-pdf";
-
 function ViewImport({ parsedFiles, setParsedFiles, setView, setSimpleSubView }) {
   const [dragging, setDragging] = useState(false);
   const [parsing, setParsing] = useState(false);
@@ -139,10 +138,7 @@ function ViewImport({ parsedFiles, setParsedFiles, setView, setSimpleSubView }) 
     const newEntries = [];
     for (const file of pdfFiles) {
       try {
-        const formData = new FormData();
-        formData.append("file", file);
-        const res = await fetch(API_PARSE_PDF, { method: "POST", body: formData });
-        const data = await res.json();
+        const data = await parsePdfInBrowser(file);
         if (data.erreur) {
           newEntries.push({ fichierSource: file.name, erreur: data.erreur });
           continue;
@@ -158,7 +154,7 @@ function ViewImport({ parsedFiles, setParsedFiles, setView, setSimpleSubView }) 
         }
         newEntries.push(data);
       } catch (err) {
-        newEntries.push({ fichierSource: file.name, erreur: err.message || "Erreur réseau ou API indisponible. Lancez le serveur (npm run start dans server/)." });
+        newEntries.push({ fichierSource: file.name, erreur: err.message || "Erreur lors de l'extraction du PDF." });
       }
     }
     setParsedFiles(prev => [...prev, ...newEntries]);
