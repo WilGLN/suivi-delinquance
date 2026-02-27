@@ -702,15 +702,19 @@ function ViewRapport({ parsedFiles }) {
     style.id = "print-style-rapport";
     style.textContent = `
       @media print {
-        body > * { display: none !important; }
-        #rapport-print-wrapper { display: block !important; position: fixed; top:0; left:0; width:100%; z-index:9999; background:#fff; padding: 20px; }
+        body > *:not(#rapport-print-wrapper) { display: none !important; }
+        #rapport-print-wrapper { display: block !important; position: static !important; width: 100% !important; max-width: 100% !important; min-height: 0 !important; height: auto !important; overflow: visible !important; background: #fff !important; padding: 20px !important; box-shadow: none !important; }
         #rapport-print-wrapper * { box-shadow: none !important; }
+        @page { margin: 1.5cm; }
       }
     `;
     const wrapper = document.createElement("div");
     wrapper.id = "rapport-print-wrapper";
     wrapper.style.display = "none";
-    wrapper.appendChild(el.cloneNode(true));
+    const clone = el.cloneNode(true);
+    clone.style.maxWidth = "900px";
+    clone.style.margin = "0 auto";
+    wrapper.appendChild(clone);
     document.body.appendChild(wrapper);
     document.head.appendChild(style);
     const cleanup = () => {
@@ -1526,11 +1530,22 @@ function ViewComparaison({ parsedFiles }) {
     const el = reportRef.current;
     if (!el) return;
     const style = document.createElement("style");
-    style.textContent = `@media print { body > * { display: none !important; } #comparaison-print { display: block !important; position: fixed; top:0; left:0; width:100%; z-index:9999; background:#fff; padding: 20px; } }`;
+    style.id = "print-style-comparaison";
+    style.textContent = `
+      @media print {
+        body > *:not(#comparaison-print) { display: none !important; }
+        #comparaison-print { display: block !important; position: static !important; width: 100% !important; max-width: 100% !important; min-height: 0 !important; height: auto !important; overflow: visible !important; background: #fff !important; padding: 20px !important; box-shadow: none !important; }
+        #comparaison-print * { box-shadow: none !important; }
+        @page { margin: 1.5cm; }
+      }
+    `;
     const wrap = document.createElement("div");
     wrap.id = "comparaison-print";
     wrap.style.display = "none";
-    wrap.appendChild(el.cloneNode(true));
+    const clone = el.cloneNode(true);
+    clone.style.maxWidth = "900px";
+    clone.style.margin = "0 auto";
+    wrap.appendChild(clone);
     document.body.appendChild(wrap);
     document.head.appendChild(style);
     window.print();
@@ -1541,31 +1556,50 @@ function ViewComparaison({ parsedFiles }) {
     setDocxStatus("⏳ Génération...");
     try {
       const docx = await import("docx");
-      const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, AlignmentType, BorderStyle, WidthType } = docx;
+      const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, AlignmentType, BorderStyle, WidthType, PageBreak, ShadingType } = docx;
       const border = { style: BorderStyle.SINGLE, size: 1, color: "DDDDDD" };
       const borders = { top: border, bottom: border, left: border, right: border };
+      const headerShading = { fill: "EFF6FF", type: ShadingType.CLEAR };
       const children = [];
-      const mkP = (text, opts = {}) => new Paragraph({ children: [new TextRun({ text: String(text ?? ""), font: "Arial", size: opts.size || 24, bold: opts.bold || false, color: opts.color || "1E293B" })], spacing: { after: 120 } });
+      const mkP = (text, opts = {}) => new Paragraph({
+        children: [new TextRun({ text: String(text ?? ""), font: "Arial", size: opts.size || 24, bold: opts.bold || false, color: opts.color || "1E293B", italics: opts.italic || false })],
+        spacing: { after: opts.after ?? 120 },
+        alignment: opts.alignment ?? AlignmentType.LEFT,
+      });
       const commune = valid[0]?.commune ?? "—";
 
-      // Page de couverture
-      children.push(mkP("OBSERVATOIRE DE LA DÉLINQUANCE", { bold: true, size: 28 }));
-      children.push(mkP("RAPPORT DE COMPARAISON DE PÉRIODES", { bold: true, size: 22 }));
-      children.push(mkP(`Commune : ${commune}`, { size: 22 }));
-      children.push(mkP(""));
-      children.push(mkP("Période A : " + labelPeriod(entriesA), { bold: true }));
-      children.push(mkP(entriesA.length ? "Mois : " + entriesA.map(f => f.moisLabel + " " + f.annee).join(", ") : "Aucun"));
-      children.push(mkP(`Total faits constatés : ${totalA}${tauxMoyA != null ? ` · Taux moyen : ${tauxMoyA.toFixed(2)} ‰` : ""}`));
-      children.push(mkP(""));
-      children.push(mkP("Période B : " + labelPeriod(entriesB), { bold: true }));
-      children.push(mkP(entriesB.length ? "Mois : " + entriesB.map(f => f.moisLabel + " " + f.annee).join(", ") : "Aucun"));
-      children.push(mkP(`Total faits constatés : ${totalB}${tauxMoyB != null ? ` · Taux moyen : ${tauxMoyB.toFixed(2)} ‰` : ""}`));
-      children.push(mkP(""));
-      children.push(mkP("Écart global (A vs B) : " + (ecartPct != null ? (ecartPct > 0 ? "+" : "") + ecartPct + "%" : "—"), { bold: true }));
-      children.push(mkP(""));
+      // Page de couverture — même structure que le rapport à l'écran
+      children.push(mkP("OBSERVATOIRE DE LA DÉLINQUANCE", { bold: true, size: 26, after: 80 }));
+      children.push(mkP("COMMUNE DE " + commune.toUpperCase(), { bold: true, size: 28, after: 60 }));
+      children.push(mkP("RAPPORT DE COMPARAISON DE PÉRIODES", { bold: true, size: 22, color: "2563EB", after: 80 }));
+      children.push(mkP("Réalisé à partir des données mensuelles de l'Observatoire de la Délinquance — Faits constatés par les services de Gendarmerie Nationale et de Police Nationale", { size: 20, color: "64748B", after: 200 }));
+      // Grille 3 colonnes (Période A | Période B | Écart) comme à l'écran
+      const coverColW = [2400, 2400, 2400];
+      const cellAparas = [new Paragraph({ children: [new TextRun({ text: labelPeriod(entriesA) })] }), new Paragraph({ children: [new TextRun({ text: totalA + " faits", bold: true, color: "1E40AF" })] })];
+        if (tauxMoyA != null) cellAparas.push(new Paragraph({ children: [new TextRun({ text: tauxMoyA.toFixed(2) + " ‰ moy.", size: 20, color: "64748B" })] }));
+        const cellBparas = [new Paragraph({ children: [new TextRun({ text: labelPeriod(entriesB) })] }), new Paragraph({ children: [new TextRun({ text: totalB + " faits", bold: true, color: "0F766E" })] })];
+        if (tauxMoyB != null) cellBparas.push(new Paragraph({ children: [new TextRun({ text: tauxMoyB.toFixed(2) + " ‰ moy.", size: 20, color: "64748B" })] }));
+        const coverTable = new Table({
+          width: { size: 7200, type: WidthType.DXA },
+          rows: [
+            new TableRow({ children: [
+              new TableCell({ borders, width: { size: coverColW[0], type: WidthType.DXA }, shading: headerShading, children: [new Paragraph({ children: [new TextRun({ text: "Période A", bold: true, color: "1E40AF" })] })] }),
+              new TableCell({ borders, width: { size: coverColW[1], type: WidthType.DXA }, shading: headerShading, children: [new Paragraph({ children: [new TextRun({ text: "Période B", bold: true, color: "0F766E" })] })] }),
+              new TableCell({ borders, width: { size: coverColW[2], type: WidthType.DXA }, shading: headerShading, children: [new Paragraph({ children: [new TextRun({ text: "Écart (A / B)", bold: true })] })] }),
+            ]}),
+            new TableRow({ children: [
+              new TableCell({ borders, width: { size: coverColW[0], type: WidthType.DXA }, children: cellAparas }),
+              new TableCell({ borders, width: { size: coverColW[1], type: WidthType.DXA }, children: cellBparas }),
+              new TableCell({ borders, width: { size: coverColW[2], type: WidthType.DXA }, children: [new Paragraph({ children: [new TextRun({ text: "Évolution" })] }), new Paragraph({ children: [new TextRun({ text: ecartPct != null ? (ecartPct > 0 ? "+" : "") + ecartPct + "%" : "—", bold: true })] })] }),
+            ]}),
+          ],
+        });
+      children.push(coverTable);
+      children.push(mkP("", { after: 400 }));
+      children.push(new Paragraph({ children: [new PageBreak()], spacing: { before: 0, after: 0 } }));
 
-      // Chapitre 1 — Synthèse
-      children.push(mkP("CHAPITRE 1 — SYNTHÈSE EXÉCUTIVE", { bold: true, size: 20 }));
+      // Chapitre 1 — Synthèse exécutive (même titre que à l'écran)
+      children.push(mkP("CHAPITRE 1 — SYNTHÈSE EXÉCUTIVE", { bold: true, size: 22, after: 200 }));
       children.push(mkP(synthesisText));
       if (ecartPct != null) {
         const phrase = ecartPct > 0 ? "La période A enregistre davantage de faits constatés que la période B." : ecartPct < 0 ? "La période A enregistre moins de faits que la période B." : "Les deux périodes sont à égalité.";
@@ -1573,13 +1607,14 @@ function ViewComparaison({ parsedFiles }) {
       }
       children.push(mkP(""));
 
-      // Chapitre 2 — Tableau par catégorie
-      children.push(mkP("CHAPITRE 2 — COMPARAISON PAR CATÉGORIE", { bold: true, size: 20 }));
-      children.push(mkP("2.1 Tableau récapitulatif par catégorie"));
+      // Chapitre 2 — Tableau par catégorie (présentation alignée écran)
+      children.push(mkP("CHAPITRE 2 — COMPARAISON PAR CATÉGORIE", { bold: true, size: 22, after: 160 }));
+      children.push(mkP("Répartition des faits constatés par grande catégorie d'infraction pour chaque période.", { after: 120 }));
+      children.push(mkP("2.1 Tableau récapitulatif par catégorie", { bold: true, size: 20, after: 100 }));
       const colW2 = [2500, 1500, 1500, 1200];
       const h2 = ["Catégorie", "Période A", "Période B", "Écart %"];
       const tableCat = [
-        new TableRow({ children: h2.map((h, i) => new TableCell({ borders, children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })], width: { size: colW2[i], type: WidthType.DXA } })) }),
+        new TableRow({ children: h2.map((h, i) => new TableCell({ borders, shading: headerShading, children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })], width: { size: colW2[i], type: WidthType.DXA } })) }),
         ...categoryTableRows.map(r => new TableRow({
           children: [
             new TableCell({ borders, children: [new Paragraph({ children: [new TextRun({ text: r.cat })] })], width: { size: colW2[0], type: WidthType.DXA } }),
@@ -1592,13 +1627,14 @@ function ViewComparaison({ parsedFiles }) {
       children.push(new Table({ width: { size: 6700, type: WidthType.DXA }, rows: tableCat }));
       children.push(mkP(""));
 
-      // Chapitre 3 — Tableau détaillé (tous indicateurs)
-      children.push(mkP("CHAPITRE 3 — TABLEAU COMPARATIF DÉTAILLÉ", { bold: true, size: 20 }));
-      children.push(mkP("3.1 Tous les indicateurs"));
+      // Chapitre 3 — Tableau détaillé (tous indicateurs, style comme à l'écran)
+      children.push(mkP("CHAPITRE 3 — TABLEAU COMPARATIF DÉTAILLÉ", { bold: true, size: 22, after: 160 }));
+      children.push(mkP("Le tableau suivant détaille, pour chaque indicateur, les totaux (ou taux moyens) de la période A et de la période B, ainsi que l'écart en pourcentage.", { after: 120 }));
+      children.push(mkP("3.1 Tous les indicateurs (vue synthétique)", { bold: true, size: 20, after: 100 }));
       const colW = [2800, 1400, 1200, 1200, 1000];
       const headers = ["Indicateur", "Catégorie", "Période A", "Période B", "Écart %"];
       const tableRows = [
-        new TableRow({ children: headers.map((h, i) => new TableCell({ borders, children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })], width: { size: colW[i], type: WidthType.DXA } })) }),
+        new TableRow({ children: headers.map((h, i) => new TableCell({ borders, shading: headerShading, children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })], width: { size: colW[i], type: WidthType.DXA } })) }),
         ...comparisonRows.map(r => {
           const fmtA = r.isTaux && r.sumA != null ? `${Number(r.sumA).toFixed(2)} ‰` : String(r.sumA ?? "—");
           const fmtB = r.isTaux && r.sumB != null ? `${Number(r.sumB).toFixed(2)} ‰` : String(r.sumB ?? "—");
@@ -1624,15 +1660,16 @@ function ViewComparaison({ parsedFiles }) {
       children.push(mkP(""));
 
       // 3.2 Indicateurs par catégorie
-      children.push(mkP("3.2 Indicateurs détaillés par catégorie"));
+      children.push(mkP("3.2 Indicateurs détaillés par catégorie", { bold: true, size: 20, after: 100 }));
+      children.push(mkP("Détail des indicateurs regroupés par grande catégorie d'infraction.", { after: 120 }));
       const colW3 = [3000, 1500, 1500, 1200];
       const h3 = ["Indicateur", "Période A", "Période B", "Écart %"];
       const cats = [...new Set(comparisonRows.map(r => r.cat).filter(Boolean))];
       cats.forEach(cat => {
-        children.push(mkP(cat, { bold: true }));
+        children.push(mkP(cat, { bold: true, after: 80 }));
         const rowsCat = comparisonRows.filter(r => r.cat === cat);
         const subRows = [
-          new TableRow({ children: h3.map((h, i) => new TableCell({ borders, children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })], width: { size: colW3[i], type: WidthType.DXA } })) }),
+          new TableRow({ children: h3.map((h, i) => new TableCell({ borders, shading: headerShading, children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })], width: { size: colW3[i], type: WidthType.DXA } })) }),
           ...rowsCat.map(r => {
             const fmtA = r.isTaux && r.sumA != null ? `${Number(r.sumA).toFixed(2)} ‰` : String(r.sumA ?? "—");
             const fmtB = r.isTaux && r.sumB != null ? `${Number(r.sumB).toFixed(2)} ‰` : String(r.sumB ?? "—");
@@ -1650,11 +1687,15 @@ function ViewComparaison({ parsedFiles }) {
         children.push(mkP(""));
       });
 
-      // Chapitre 4 — Conclusion
-      children.push(mkP("CHAPITRE 4 — CONCLUSION", { bold: true, size: 20 }));
-      children.push(mkP(`La comparaison des périodes ${labelPeriod(entriesA)} (période A) et ${labelPeriod(entriesB)} (période B) pour la commune de ${commune} montre un total de ${totalA} faits constatés sur la période A et ${totalB} faits sur la période B.${ecartPct != null ? ` L'évolution entre les deux périodes est de ${ecartPct > 0 ? "+" : ""}${ecartPct}%.` : ""} Les données utilisées proviennent exclusivement des rapports mensuels de l'Observatoire de la Délinquance ; aucune donnée synthétique ou estimée n'a été utilisée.`));
-      children.push(mkP(""));
-      children.push(mkP("Rapport établi à partir des données mensuelles de l'Observatoire de la Délinquance — GIP Ressources & Territoires", { size: 18, color: "64748B" }));
+      // Chapitre 4 — Conclusion (aligné pied de page écran)
+      children.push(mkP("CHAPITRE 4 — CONCLUSION", { bold: true, size: 22, after: 160 }));
+      children.push(mkP(`La comparaison des périodes ${labelPeriod(entriesA)} (période A) et ${labelPeriod(entriesB)} (période B) pour la commune de ${commune} montre un total de ${totalA} faits constatés sur la période A et ${totalB} faits sur la période B.${ecartPct != null ? ` L'évolution entre les deux périodes est de ${ecartPct > 0 ? "+" : ""}${ecartPct}%.` : ""} Les données utilisées proviennent exclusivement des rapports mensuels de l'Observatoire de la Délinquance ; aucune donnée synthétique ou estimée n'a été utilisée.`, { after: 200 }));
+      children.push(mkP("Rapport établi à partir des données mensuelles de l'Observatoire de la Délinquance — GIP Ressources & Territoires", { size: 18, color: "64748B", after: 80 }));
+      children.push(mkP("Données Gendarmerie Nationale & Police Nationale — Comparaison de périodes", { size: 18, color: "64748B", after: 80 }));
+      children.push(mkP("Période A : " + (entriesA.length ? entriesA.map(f => f.moisLabel + " " + f.annee).join(", ") : "—"), { size: 18, color: "64748B", after: 80 }));
+      children.push(mkP("Période B : " + (entriesB.length ? entriesB.map(f => f.moisLabel + " " + f.annee).join(", ") : "—"), { size: 18, color: "64748B", after: 80 }));
+      const todayStr = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
+      children.push(mkP("Rapport généré le " + todayStr, { size: 18, color: "64748B", italic: true }));
 
       // ─── MODE EXPERT : annexes complètes ─────────────────────────────────────
       if (modeExpert) {
@@ -1839,8 +1880,6 @@ function ViewComparaison({ parsedFiles }) {
           <div style={{display:"flex",flexWrap:"wrap",gap:12,alignItems:"center",marginBottom:28}}>
             <button onClick={copyReport} style={{padding:"10px 18px",borderRadius:THEME.radius.md,border:`1px solid ${THEME.colors.border}`,background:THEME.colors.surface,fontWeight:600,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:8,fontFamily:THEME.font,boxShadow:THEME.shadow.card}}>📋 {copyStatus || "Copier le rapport"}</button>
             <button onClick={printReport} style={{padding:"10px 18px",borderRadius:THEME.radius.md,border:`1px solid ${THEME.colors.border}`,background:THEME.colors.surface,fontWeight:600,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:8,fontFamily:THEME.font}}>🖨️ Imprimer / PDF</button>
-            <button onClick={() => exportDocx(false)} style={{padding:"10px 18px",borderRadius:THEME.radius.md,border:"none",background:THEME.colors.accent,color:"#fff",fontWeight:600,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:8,fontFamily:THEME.font,boxShadow:"0 2px 8px rgba(13,148,136,.3)"}}>📄 {docxStatus || "Exporter Word"}</button>
-            <button onClick={() => exportDocx(true)} title="Rapport complet + annexes : métadonnées, détail des mois, méthodologie, référentiel des indicateurs, notes techniques" style={{padding:"10px 18px",borderRadius:THEME.radius.md,border:`1px solid ${THEME.colors.accent}`,background:"#CCFBF1",color:THEME.colors.accentHover,fontWeight:600,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:8,fontFamily:THEME.font}}>📑 Export mode expert (.docx)</button>
           </div>
 
           <div id="rapport-comparaison" ref={reportRef} style={{background:THEME.colors.surface,borderRadius:THEME.radius.lg,border:`1px solid ${THEME.colors.border}`,padding:"40px 48px",boxShadow:THEME.shadow.card,maxWidth:900,fontSize:14,lineHeight:1.7,color:THEME.colors.text,fontFamily:THEME.font}}>
